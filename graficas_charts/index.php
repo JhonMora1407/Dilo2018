@@ -5,6 +5,7 @@
 <body>
 <canvas id="datos_porcentaje_linea" width="650" height="250"></canvas>
 <canvas id="datos_porcentaje_linea_b" width="650" height="250"></canvas>
+<canvas id="datos_consulta_automaticos" width="650" height="250"></canvas>
 </body>
 
 </html>
@@ -66,7 +67,42 @@ FROM (
                          ORDER BY totales.semana ASC";
     $resultado = pg_query($conn,$consulta_porcentaje_linea_b);
     $datos_porcentaje_linea_b = pg_fetch_all($resultado); 
-       
+
+
+  $consulta_tickets_automaticos = "SELECT semana, SUM(conteo) AS conteo, conteo_automatico FROM(
+                                  SELECT EXTRACT(WEEK FROM fecha_registro)as semana, COUNT(incidente) AS conteo,
+                                  (CASE WHEN EXTRACT(HOUR FROM fecha_registro) BETWEEN 6 AND 13 THEN 1 
+                                  WHEN EXTRACT(HOUR FROM fecha_registro) BETWEEN 14 AND 21 THEN 2 
+                                  WHEN EXTRACT(HOUR FROM fecha_registro) NOT BETWEEN 6 AND 21 THEN 3  END) AS turno
+                                  FROM tk.reg_ticket
+                                  WHERE estado <> 'CANCELED'
+                                  GROUP BY EXTRACT(WEEK FROM fecha_registro), EXTRACT(HOUR FROM fecha_registro), semana
+                                  ) AS a
+                                  LEFT JOIN
+                                  (
+                                  SELECT semana_a, SUM(conteo_automatico) as conteo_automatico FROM (
+                                  SELECT EXTRACT(WEEK FROM fecha_registro) AS semana_a ,COUNT(incidente) as conteo_automatico,
+                                  (CASE WHEN EXTRACT(HOUR FROM fecha_registro) BETWEEN 6 AND 13 THEN 1 
+                                  WHEN EXTRACT(HOUR FROM fecha_registro) BETWEEN 14 AND 21 THEN 2 
+                                  WHEN EXTRACT(HOUR FROM fecha_registro) NOT BETWEEN 6 AND 21 THEN 3  END) AS turno_automatico
+                                  FROM tk.reg_ticket
+                                  WHERE usuario = 'User EvA'
+                                  AND estado <> 'CANCELED'
+                                  GROUP BY EXTRACT(WEEK FROM fecha_registro), EXTRACT(HOUR FROM fecha_registro)
+                                  ORDER BY EXTRACT(WEEK FROM fecha_registro) ASC
+                                  )AS b
+                                  WHERE b.turno_automatico = 2
+                                  GROUP BY b.semana_a 
+                                  )as datos_b
+                                  ON  a.semana = datos_b.semana_a
+                                  WHERE turno = 2 AND semana BETWEEN 25 and 28
+                                  GROUP BY a.semana, conteo_automatico
+                                  ORDER BY semana ASC";
+    $resultado = pg_query($conn,$consulta_tickets_automaticos);
+    $datos_consulta_automaticos = pg_fetch_all($resultado); 
+    echo "<pre>";
+    print_r($datos_consulta_automaticos);
+    echo "</pre>";
 ?>
 
 
@@ -240,5 +276,52 @@ var labels2 = [];
    function randomScalingFactor(){ return Math.round(Math.random()*1000)};
 
    console.log(randomScalingFactor());
+
+   var labelAutomatico = [];
+   var datoAutomaticoA = [];
+   var datoAutomaticoB = [];
+
+     <?php foreach ($datos_consulta_automaticos as $key => $value) { ?>
+      labelAutomatico.push('<?php echo $value['semana']; ?>')
+      datoAutomaticoA.push(<?php echo $value['conteo']; ?>)
+      datoAutomaticoB.push(<?php echo $value['conteo_automatico']; ?>) 
+        <?php } ?>
+
+
+      var barChartData = {
+      labels: labelAutomatico,
+      datasets: [{
+        label: 'CONTEO TOTAL',
+        data : datoAutomaticoA,
+        backgroundColor: 'rgba(255, 87, 51,  0.7)'
+      }, {
+        label: 'CONTEO AUTOMATICOS',
+        data : datoAutomaticoB,
+        backgroundColor: 'rgba(255, 241, 51, 0.5)'
+      }]
+    };
+    window.onload = function() {
+      var ctx = document.getElementById('datos_consulta_automaticos').getContext('2d');
+      window.myBar = new Chart(ctx, {
+        type: 'bar',
+        data: barChartData,
+        options: {
+          title: {
+            display: true,
+            text: 'Total tickets vs tickets automaticos'
+          },
+          tooltips: {
+            intersect: false
+          },
+          responsive: true,
+          scales: {
+            xAxes: [{}],
+            yAxes: [{}]
+          }
+        }
+      });
+    };
+
+
 </script>
 
